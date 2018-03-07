@@ -1,7 +1,7 @@
 from basetestcase import BaseTestCase
 from security.x509main import x509main
 from newupgradebasetest import NewUpgradeBaseTest
-from membase.api.rest_client import RestConnection
+from membase.api.rest_client import RestConnection, RestHelper
 import commands
 import json
 import socket
@@ -10,17 +10,57 @@ from threading import Thread, Event
 from remote.remote_util import RemoteMachineShellConnection
 from security.auditmain import audit
 from security.rbac_base import RbacBase
+import os, subprocess
+import copy
 
 class x509tests(BaseTestCase):
 
     def setUp(self):
         super(x509tests, self).setUp()
         self._reset_original()
+        self.ip_address = self.getLocalIPAddress()
+        self.ip_address = '172.16.1.174'
+        self.root_ca_path = x509main.CACERTFILEPATH + x509main.CACERTFILE
+        self.client_cert_pem = x509main.CACERTFILEPATH + self.ip_address + ".pem"
+        self.client_cert_key = x509main.CACERTFILEPATH + self.ip_address + ".key"
         SSLtype = self.input.param("SSLtype","go")
         encryption_type = self.input.param('encryption_type',"")
         key_length=self.input.param("key_length",1024)
-        x509main(self.master)._generate_cert(self.servers,type=SSLtype,encryption=encryption_type,key_length=key_length)
-        self.ip_address = self.getLocalIPAddress()
+        #Input parameters for state, path, delimeters and prefixes
+        self.client_cert_state = self.input.param("client_cert_state","disable")
+        self.paths = self.input.param('paths',"subject.cn:san.dnsname:san.uri").split(":")
+        self.prefixs = self.input.param('prefixs','www.cb-:us.:www.').split(":")
+        self.delimeters = self.input.param('delimeter','.:.:.') .split(":")
+        self.setup_once = self.input.param("setup_once",False)
+        
+        self.dns = self.input.param('dns',None)
+        self.uri = self.input.param('uri',None)
+        
+        copy_servers = copy.deepcopy(self.servers)
+        
+        #Generate cert and pass on the client ip for cert generation
+        if (self.dns is not None) or (self.uri is not None):
+            x509main(self.master)._generate_cert(copy_servers,type=SSLtype,encryption=encryption_type,key_length=key_length,client_ip=self.ip_address,alt_names='non_default',dns=self.dns,uri=self.uri)
+        else:
+            x509main(self.master)._generate_cert(copy_servers,type=SSLtype,encryption=encryption_type,key_length=key_length,client_ip=self.ip_address)
+        self.log.info(" Path is {0} - Prefixs - {1} -- Delimeters - {2}".format(self.paths, self.prefixs, self.delimeters))
+        
+        if (self.setup_once):
+            x509main(self.master).setup_master(self.client_cert_state, self.paths, self.prefixs, self.delimeters)
+            x509main().setup_cluster_nodes_ssl(self.servers)
+        
+
+        #reset the severs to ipv6 if there were ipv6
+        '''
+        for server in self.servers:
+            if server.ip.count(':') > 0:
+                    # raw ipv6? enclose in square brackets
+                    server.ip = '[' + server.ip + ']'
+        '''
+        
+        self.log.info (" list of server {0}".format(self.servers))
+        self.log.info (" list of server {0}".format(copy_servers))
+        
         enable_audit=self.input.param('audit',None)
         if enable_audit:
             Audit = audit(host=self.master)
@@ -32,10 +72,11 @@ class x509tests(BaseTestCase):
                 self.sleep(30)
 
     def tearDown(self):
-        self._reset_original()
-        shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
-        shell.execute_command("rm " + x509main.CACERTFILEPATH)
-        super(x509tests, self).tearDown()
+        print "Into Teardown"
+        #self._reset_original()
+        #shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
+        #shell.execute_command("rm " + x509main.CACERTFILEPATH)
+        #super(x509tests, self).tearDown()
 
 
     def _reset_original(self):
@@ -63,6 +104,7 @@ class x509tests(BaseTestCase):
         self.assertTrue(valueVerification, "Values for one of the fields is not matching")
 
     def getLocalIPAddress(self):
+        '''
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('couchbase.com', 0))
         return s.getsockname()[0]
@@ -71,7 +113,6 @@ class x509tests(BaseTestCase):
         if '1' not in ipAddress:
             status, ipAddress = commands.getstatusoutput("ifconfig eth0 | grep  -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | awk '{print $2}'")
         return ipAddress
-        '''
     
     def createBulkDocuments(self,client):
         start_num = 0
@@ -204,6 +245,12 @@ class x509tests(BaseTestCase):
         rest = RestConnection(self.master)
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(servs_inout)
+        '''
+        for server in self.servers:
+            if server.ip.count(':') > 0:
+                    # raw ipv6? enclose in square brackets
+                    server.ip = '[' + server.ip + ']'
+        '''
         known_nodes = ['ns_1@'+self.master.ip]
         for server in servs_inout:
             rest.add_node('Administrator','password',server.ip)
@@ -339,7 +386,17 @@ class x509tests(BaseTestCase):
             #Setup cluster1
             x509main(cluster1[0]).setup_master()
             x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
-
+            #reset the severs to ipv6 if there were ipv6
+            if cluster1[1].ip.count(':') > 0:
+                    # raw ipv6? enclose in square brackets
+                    cluster1[1].ip = '[' + cluster1[1].ip + ']'
+                    cluster1[0].ip = '[' + cluster1[0].ip + ']'
+            
+            restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
+            restCluster1.remove_all_replications()
+            restCluster1.remove_all_remote_clusters()
+            
+            '''
             restCluster1.add_node('Administrator','password',cluster1[1].ip)
             known_nodes = ['ns_1@'+cluster1[0].ip,'ns_1@' + cluster1[1].ip]
             restCluster1.rebalance(known_nodes)
@@ -347,27 +404,37 @@ class x509tests(BaseTestCase):
             restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
             restCluster1.remove_all_replications()
             restCluster1.remove_all_remote_clusters()
+            '''
 
             #Setup cluster2
             x509main(cluster2[0]).setup_master()
             x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
-
+            if cluster2[1].ip.count(':') > 0:
+                    # raw ipv6? enclose in square brackets
+                    cluster2[1].ip = '[' + cluster2[1].ip + ']'
+                    cluster2[0].ip = '[' + cluster2[0].ip + ']'
+        
+            self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
+            restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
+            
+            '''
             restCluster2.add_node('Administrator','password',cluster2[1].ip)
             known_nodes = ['ns_1@'+cluster2[0].ip,'ns_1@' + cluster2[1].ip]
             restCluster2.rebalance(known_nodes)
             self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
             restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
-
+            '''
+            self.sleep(20)
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data  =  open(test, 'rb').read()
             restCluster1.add_remote_cluster(cluster2[0].ip,cluster2[0].port,'Administrator','password',remote_cluster_name,certificate=data)
+            self.sleep(20)
             replication_id = restCluster1.start_replication('continuous','default',remote_cluster_name)
             if replication_id is not None:
                 self.assertTrue(True,"Replication was not created successfully")
+        except Exception, ex:
+            self.log.info("Exception is -{0}".format(ex))
         finally:
-            known_nodes = ['ns_1@'+cluster2[0].ip,'ns_1@'+cluster2[1].ip]
-            restCluster2.rebalance(known_nodes,['ns_1@' + cluster2[1].ip])
-            self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
             restCluster2.delete_bucket()
 
     #simple xdcr with ca cert updated at source and destination, re-generate new certs
@@ -384,6 +451,7 @@ class x509tests(BaseTestCase):
             x509main(cluster1[0]).setup_master()
             x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
 
+            '''
             restCluster1.add_node('Administrator','password',cluster1[1].ip)
             known_nodes = ['ns_1@'+cluster1[0].ip,'ns_1@' + cluster1[1].ip]
             restCluster1.rebalance(known_nodes)
@@ -391,16 +459,19 @@ class x509tests(BaseTestCase):
             restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
             restCluster1.remove_all_replications()
             restCluster1.remove_all_remote_clusters()
+            '''
 
             #Setup cluster2
             x509main(cluster2[0]).setup_master()
             x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
-
+            
+            '''
             restCluster2.add_node('Administrator','password',cluster2[1].ip)
             known_nodes = ['ns_1@'+cluster2[0].ip,'ns_1@' + cluster2[1].ip]
             restCluster2.rebalance(known_nodes)
             self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
             restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
+            '''
 
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data  =  open(test, 'rb').read()
@@ -473,6 +544,69 @@ class x509tests(BaseTestCase):
             known_nodes = ['ns_1@'+cluster2[0].ip,'ns_1@'+cluster2[1].ip]
             restCluster2.rebalance(known_nodes,['ns_1@' + cluster2[1].ip])
             self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
+            restCluster2.delete_bucket()
+    
+    def test_xdcr_remote_ref_creation(self):
+        cluster1 = self.servers[0:2]
+        cluster2 = self.servers[2:4]
+        remote_cluster_name = 'sslcluster'
+        restCluster1 = RestConnection(cluster1[0])
+        restCluster2 = RestConnection(cluster2[0])
+        user = self.input.param("username", "Administrator")
+        password = self.input.param("password", "password")
+
+        try:
+            # Setup cluster1
+            x509main(cluster1[0]).setup_master()
+            x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
+
+            # restCluster1.add_node(user, password, cluster1[1].ip)
+            # known_nodes = ['ns_1@' + cluster1[0].ip, 'ns_1@' + cluster1[1].ip]
+            # restCluster1.rebalance(known_nodes)
+            # self.assertTrue(self.check_rebalance_complete(restCluster1), "Issue with rebalance")
+            restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
+            restCluster1.remove_all_replications()
+            restCluster1.remove_all_remote_clusters()
+
+            # Setup cluster2
+            x509main(cluster2[0]).setup_master()
+            x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
+
+            # restCluster2.add_node(user, password, cluster2[1].ip)
+            # known_nodes = ['ns_1@' + cluster2[0].ip, 'ns_1@' + cluster2[1].ip]
+            # restCluster2.rebalance(known_nodes)
+            # self.assertTrue(self.check_rebalance_complete(restCluster2), "Issue with rebalance")
+            restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
+
+            test = x509main.CACERTFILEPATH + x509main.CACERTFILE
+            data = open(test, 'rb').read()
+
+            # " -u {0}:{1}".format(user, password) + \
+            cmd = "curl -k -v -X POST" \
+                  " --cacert " + self.root_ca_path + \
+                  " --cert-type PEM --cert " + self.client_cert_pem + \
+                  " --key-type PEM --key " + self.client_cert_key + \
+                  " -d name=C2" \
+                  " -d hostname=" + cluster2[0].ip +":8091"\
+                  " -d username=" + user +\
+                  " -d password=" + password +\
+                  " -d demandEncryption=1" \
+                  " --data-urlencode \"certificate={0}\"".format(data) + \
+                  " https://Administrator:password@{0}:18091/pools/default/remoteClusters"\
+                      .format(self.master.ip)
+            print cmd
+            shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
+            output = shell.execute_command(cmd)
+            print output
+            self.sleep(0)
+
+            replication_id = restCluster1.start_replication('continuous', 'default', remote_cluster_name)
+            if replication_id is not None:
+                self.assertTrue(True, "Replication was not created successfully")
+        finally:
+            known_nodes = ['ns_1@' + cluster2[0].ip, 'ns_1@' + cluster2[1].ip]
+            restCluster2.rebalance(known_nodes, ['ns_1@' + cluster2[1].ip])
+            self.assertTrue(self.check_rebalance_complete(restCluster2), "Issue with rebalance")
             restCluster2.delete_bucket()
 
     def test_basic_ssl_test_invalid_cert(self):
@@ -635,12 +769,384 @@ class x509tests(BaseTestCase):
         self.checkConfig(8229, self.master, expectedResults)
 
     #Audit test for /reloadCA
+   
     def test_audit_reload_ca(self):
         x509main(self.master).setup_master()
         expectedResults = {"expires":"2049-12-31T23:59:59.000Z","subject":"CN="+self.master.ip,"ip":self.ip_address, "port":57457,"source":"ns_server", \
                                "user":"Administrator"}
         self.checkConfig(8230, self.master, expectedResults)
+    
+    #Common test case for testing services and other parameter
+    def test_add_node_with_cert_diff_services(self):
+        servs_inout = self.servers[1:4]
+        rest = RestConnection(self.master)
+        services_in = []
+        self.log.info ("list of services to be added {0}".format(self.services_in))
+        
+        for service in self.services_in.split("-"):
+            services_in.append(service.split(":")[0])
+        self.log.info ("list of services to be added after formatting {0}".format(services_in))
+        
+        #add nodes to the cluster
+        rebalance = self.cluster.async_rebalance(self.servers[:self.nodes_init], servs_inout, [],
+                                                     services=services_in)
+        rebalance.result()
+        
+        self.sleep(20)
+        
+        #check for analytics services, for Vulcan check on http port
+        cbas_node = self.get_nodes_from_services_map(service_type='cbas')
+        if cbas_node is not None:
+            self.check_analytics_service(cbas_node)
+        
+        #check if n1ql service, test it end to end
+        n1ql_node = self.get_nodes_from_services_map(service_type="n1ql")
+        if n1ql_node is not None:
+            self.check_query_api(n1ql_node)
+        
+        #check if fts services, test it end to end
+        fts_node = self.get_nodes_from_services_map(service_type='fts')
+        if fts_node is not None:
+            self.check_fts_service(fts_node)
+            
+        #check for kv service, test for /pools/default
+        kv_node = self.get_nodes_from_services_map(service_type='kv')
+        if kv_node is not None:
+            self.check_ns_server_rest_api(kv_node)
+            self.check_views_ssl()
+        
+        
+        
+  
+    def check_ns_server_rest_api(self,host):
+        rest = RestConnection(host)
+        helper = RestHelper(rest)
+        if not helper.bucket_exists('default'):
+            rest.create_bucket(bucket='default', ramQuotaMB=100)
+            self.sleep(10)
+            
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " https://{0}:{1}/pools/default". \
+                      format(host.ip, '18091')
+        else:
+            cmd = "curl -v --cacert " + self.root_ca_path +  \
+                  " -u Administrator:password " + \
+                  " https://{0}:{1}/pools/default". \
+                      format(host.ip, '18091')
 
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        output =  json.loads(output)
+        self.log.info ("Print output of command is {0}".format(output))
+        self.assertEqual(output['balanced'],True," The Web request has failed on port 18091 ")
+        
+        cmd = "curl -v -u Administrator:password " + \
+              " http://{0}:{1}/pools/default". \
+                  format(self.master.ip, '8091')
+
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertTrue(output.find("200 OK"),"Cannot execute command on port 8091")
+            
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v -X POST --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " https://{0}:{1}/pools/default -d 'memoryQuota=400'". \
+                      format(host.ip, '18091')
+        else:
+            cmd = "curl -v -X POST --cacert " + self.root_ca_path +  \
+                  " -u Administrator:password " + \
+                  " https://{0}:{1}/pools/default -d 'memoryQuota=400'". \
+                      format(host.ip, '18091')
+        
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output == "":
+            self.assertTrue(True,"Issue with post on /pools/default")
+        
+        cmd = "curl -v -X POST " + \
+                  " -u Administrator:password " + \
+                  " http://{0}:{1}/pools/default -d 'memoryQuota=400'". \
+                      format(host.ip, '8091')
+        
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output == "":
+            self.assertTrue(True,"Issue with post on /pools/default")
+
+        
+                
+    def check_query_api(self,host):
+        rest = RestConnection(self.master)
+        helper = RestHelper(rest)
+        if not helper.bucket_exists('default'):
+            rest.create_bucket(bucket='default', ramQuotaMB=100)
+        self.sleep(20)
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v --http1.1 --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem +  \
+                    " --key-type PEM --key " + self.client_cert_key + \
+                    " https://{0}:{1}/query/service -d statement='create index idx1 on default(name)'". \
+                    format(host.ip, '18093')
+        else:
+            cmd = "curl -v --http1.1 --cacert " + self.root_ca_path + \
+                  " -u Administrator:password " + \
+                  "https://{0}:{1}/query/service -d statement='create index idx1 on default(name)'". \
+                      format(host.ip, '18093')
+
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output)['status'],"success","Create Index Failed on port 18093")
+        
+        cmd = "curl -v --http1.1 " + \
+                  " -u Administrator:password " + \
+                  "http://{0}:{1}/query/service -d statement='create index idx2 on default(name)'". \
+                      format(host.ip, '8093')
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output)['status'],"success","Create Index Failed on port 8093")
+
+    def check_fts_service(self,host):
+        rest = RestConnection(self.master)
+        helper = RestHelper(rest)
+        if not helper.bucket_exists('default'):
+            rest.create_bucket(bucket='default', ramQuotaMB=100)
+        fts_ssl_port = 18094
+        self.sleep(20)
+        idx = {"sourceName": "default",
+                   "sourceType": "couchbase",
+                   "type": "fulltext-index"}
+
+        qry = {"indexName": "default_index_1",
+                   "query": {"field": "type", "match": "emp"},
+                   "size": 10000000}
+
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v  --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " -XPUT -H \"Content-Type: application/json\" " + \
+                  "https://{0}:{1}/api/index/default_idx -d ". \
+                          format(host.ip, fts_ssl_port) + \
+                      "\'{0}\'".format(json.dumps(idx))
+        else:
+            cmd = "curl -v --cacert " + self.root_ca_path  + \
+                      " -XPUT -H \"Content-Type: application/json\" " + \
+                      "  -u Administrator:password " + \
+                      "https://{0}:{1}/api/index/default_idx -d ". \
+                          format(host.ip, fts_ssl_port) + \
+                      "\'{0}\'".format(json.dumps(idx))
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output), {"status":"ok"},"Issue with creating FTS index with client Cert")
+        
+        cmd = "curl -v " + \
+                      " -XPUT -H \"Content-Type: application/json\" " + \
+                      "  -u Administrator:password " + \
+                      "http://{0}:{1}/api/index/default_idx01 -d ". \
+                          format(host.ip, 8094) + \
+                      "\'{0}\'".format(json.dumps(idx))
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output), {"status":"ok"},"Issue with creating FTS index with client Cert")
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v -X DELETE --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " -H \"Content-Type: application/json\" " + \
+                  "https://{0}:{1}/api/index/default_idx ". \
+                          format(host.ip, fts_ssl_port) 
+        else:
+            cmd = "curl -v -X DELETE --cacert " + self.root_ca_path  + \
+                      " -H \"Content-Type: application/json\" " + \
+                      "  -u Administrator:password " + \
+                      "https://{0}:{1}/api/index/default_idx ". \
+                          format(host.ip, fts_ssl_port)
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output), {"status":"ok"},"Issue with deleteing FTS index with client Cert")
+        
+        cmd = "curl -v -X DELETE "  + \
+                      " -H \"Content-Type: application/json\" " + \
+                      "  -u Administrator:password " + \
+                      "http://{0}:{1}/api/index/default_idx01 ". \
+                          format(host.ip, 8094)
+        
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output), {"status":"ok"},"Issue with deleteing FTS index on 8094")
+            
+        ''' - Check with FTS team on this        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v  --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  "  -H \"Content-Type: application/json\" " + \
+                  "https://{0}:{1}/api/index/". \
+                          format(host.ip, fts_ssl_port) 
+        else:
+            cmd = "curl -v --cacert " + self.root_ca_path  + \
+                      " -H \"Content-Type: application/json\" " + \
+                      "  -u Administrator:password " + \
+                      "https://{0}:{1}/api/index/". \
+                          format(host.ip, fts_ssl_port)
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        print json.loads(output)
+        '''        
+
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v  --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " -H \"Content-Type: application/json\" " + \
+                  "https://{0}:{1}/api/stats ". \
+                          format(host.ip, fts_ssl_port) 
+        else:
+            cmd = "curl -v --cacert " + self.root_ca_path  + \
+                      " -H \"Content-Type: application/json\" " + \
+                      "  -u Administrator:password " + \
+                      "https://{0}:{1}/api/stats ". \
+                          format(host.ip, fts_ssl_port)
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output)['manager']['TotPlannerKickErr'],0,"Issues with FTS Stats API")
+    
+    #Check for analytics service api, right now SSL is not supported for Analytics, hence http port
+    def check_analytics_service(self,host):
+        rest = RestConnection(self.master)
+        helper = RestHelper(rest)
+        if not helper.bucket_exists('default'):
+            rest.create_bucket(bucket='default', ramQuotaMB=100)
+                
+        cmd = "curl -v  " + \
+                " -s -u Administrator:password --data pretty=true --data-urlencode 'statement=create bucket default_cbas with {\"name\":\"default\"}' " + \
+                "http://{0}:{1}/_p/cbas/query/service ". \
+                format(host.ip, 8091)
+        
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output)['status'],"success","Create Index Failed")
+        
+    
+    def check_views_ssl(self):
+        rest = RestConnection(self.master)
+        helper = RestHelper(rest)
+        if not helper.bucket_exists('default'):
+            rest.create_bucket(bucket='default', ramQuotaMB=100)
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v -X PUT --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem +  \
+                    " --key-type PEM --key " + self.client_cert_key + \
+                    " https://{0}:{1}/default/_design/dev_sample".format(self.master.ip, '18092')
+        else:
+            cmd = "curl -v --cacert " + self.root_ca_path + \
+                  " -u Administrator:password " + \
+                  " https://{0}:{1}/default/_design/dev_sample". \
+                      format(self.master.ip, '18092')
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output)['reason'],"Content is not json.","Create Index Failed")
+        
+        #" https://{0}:{1}/default/_design/dev_sample -d '{\"views\":{\"sampleview\":{\"map\":\"function (doc, meta){emit(doc.emailId,meta.id, null);\n}\"}}, \"options\": {\"updateMinChanges\": 3, \"replicaUpdateMinChanges\": 3}}'". \
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v -X POST --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem +  \
+                    " --key-type PEM --key " + self.client_cert_key + \
+                    " https://{0}:{1}/default/_design/dev_sample/_view/sampleview". \
+                    format(self.master.ip, '18092')
+        else:
+            cmd = "curl -v -X POST --cacert " + self.root_ca_path + \
+                  " -u Administrator:password " + \
+                  " https://{0}:{1}/default/_design/dev_sample/_view/sampleview". \
+                      format(self.master.ip, '18092')
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertEqual(json.loads(output)['error'],"not_found","Create Index Failed")
+               
+    def test_rest_api_disable(self):
+        rest = RestConnection(self.master)
+        rest.create_bucket(bucket='default', ramQuotaMB=100)
+        
+        cmd = "curl -v --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+              " https://{0}:{1}/pools/default". \
+                  format(self.master.ip, '18091')
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output.find("Unauthorized"):
+            print "FOund Unauthorized"
+        
+        cmd = "curl -v --cacert " + self.root_ca_path +  \
+              " -u Administrator:password  https://{0}:{1}/pools/default". \
+                  format(self.master.ip, '18091')
+        
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output.find("200 OK"):
+            print "HTTP Request was successfull"
+          
+                  
+        cmd = "curl -v -u Administrator:password " + \
+              " http://{0}:{1}/pools/default". \
+                  format(self.master.ip, '8091')
+        
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output.find("200 OK"):
+            print "HTTP Request was successfull"
+        
+    def test_rest_api_mandatory(self):
+        rest = RestConnection(self.master)
+        rest.create_bucket(bucket='default', ramQuotaMB=100)
+        
+        cmd = "curl -v --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+              " https://{0}:{1}/pools/default". \
+                  format(self.master.ip, '18091')
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertTrue(output.find("200 OK"),"Issue with using client cert with mandatory option")
+        
+        cmd = "curl -v --cacert " + self.root_ca_path +  \
+              " -u Administrator:password  https://{0}:{1}/pools/default". \
+                  format(self.master.ip, '18091')
+        
+        self.log.info("Running command : {0}".format(cmd))
+        try:
+            output = subprocess.check_output(cmd, shell=True)
+        except:
+            self.assertTrue(True,"CA Cert works with mandatory")
+                
+                  
+        cmd = "curl -v -u Administrator:password " + \
+              " http://{0}:{1}/pools/default". \
+                  format(self.master.ip, '8091')
+        
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertTrue(output.find("401"),"Basic authentication is working with mandatory option")
+    
+    def test_incorrect_user(self):
+        rest = RestConnection(self.master)
+        rest.create_bucket(bucket='default', ramQuotaMB=100)
+        
+        cmd = "curl -v --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+              " https://{0}:{1}/pools/default". \
+                  format(self.master.ip, '18091')
+
+        self.log.info("Running command : {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertTrue(output.find("401"),"Invalid user gets authenticated successfully")
+
+
+    def test_upload_json_tests(self):
+        rest = RestConnection(self.master)
+        x509main(self.master).write_client_cert_json_new(self.client_cert_state, self.paths, self.prefixs, self.delimeters)
+        status, content = x509main(self.master)._upload_cluster_ca_settings("Administrator","password")
+        if "Invalid value 'subject.test' for key 'path'" in content:
+            self.assertTrue(True, " Correct error message for key path")
+    
 
 class x509_upgrade(NewUpgradeBaseTest):
 
@@ -648,9 +1154,38 @@ class x509_upgrade(NewUpgradeBaseTest):
         super(x509_upgrade, self).setUp()
         self.initial_version = self.input.param("initial_version",'4.5.0-900')
         self.upgrade_version = self.input.param("upgrade_version", "4.5.0-1069")
+        self.ip_address = '172.16.1.174'
+        self.root_ca_path = x509main.CACERTFILEPATH + x509main.CACERTFILE
+        self.client_cert_pem = x509main.CACERTFILEPATH + self.ip_address + ".pem"
+        self.client_cert_key = x509main.CACERTFILEPATH + self.ip_address + ".key"
+        #Input parameters for state, path, delimeters and prefixes
+        self.client_cert_state = self.input.param("client_cert_state","disable")
+        self.paths = self.input.param('paths',"subject.cn:san.dnsname:san.uri").split(":")
+        self.prefixs = self.input.param('prefixs','www.cb-:us.:www.').split(":")
+        self.delimeters = self.input.param('delimeter','.:.:.') .split(":")
+        self.setup_once = self.input.param("setup_once",False)
+        
+        SSLtype = self.input.param("SSLtype","openssl")
+        encryption_type = self.input.param('encryption_type',"")
+        key_length=self.input.param("key_length",1024)
+        
+        self.dns = self.input.param('dns',None)
+        self.uri = self.input.param('uri',None)
+        
+        copy_servers = copy.deepcopy(self.servers)
+        
         self._reset_original()
-        x509main(self.master)._generate_cert(self.servers)
-        self.ip_address = self.getLocalIPAddress()
+        
+        if (self.dns is not None) or (self.uri is not None):
+            x509main(self.master)._generate_cert(copy_servers,type=SSLtype,encryption=encryption_type,key_length=key_length,client_ip=self.ip_address,alt_names='non_default',dns=self.dns,uri=self.uri)
+        else:
+            x509main(self.master)._generate_cert(copy_servers,type=SSLtype,encryption=encryption_type,key_length=key_length,client_ip=self.ip_address)
+        self.log.info(" Path is {0} - Prefixs - {1} -- Delimeters - {2}".format(self.paths, self.prefixs, self.delimeters))
+        
+        if (self.setup_once):
+            x509main(self.master).setup_master(self.client_cert_state, self.paths, self.prefixs, self.delimeters)
+            x509main().setup_cluster_nodes_ssl(self.servers)
+        
         enable_audit=self.input.param('audit',None)
         if enable_audit:
             Audit = audit(host=self.master)
@@ -672,6 +1207,64 @@ class x509_upgrade(NewUpgradeBaseTest):
             rest = RestConnection(servers)
             rest.regenerate_cluster_certificate()
             x509main(servers)._delete_inbox_folder()
+    
+    def check_rest_api(self,host):
+        rest = RestConnection(host)
+        helper = RestHelper(rest)
+        if not helper.bucket_exists('default'):
+            rest.create_bucket(bucket='default', ramQuotaMB=100)
+            self.sleep(10)
+            
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " https://{0}:{1}/pools/default". \
+                      format(host.ip, '18091')
+        else:
+            cmd = "curl -v --cacert " + self.root_ca_path +  \
+                  " -u Administrator:password " + \
+                  " https://{0}:{1}/pools/default". \
+                      format(host.ip, '18091')
+
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        output =  json.loads(output)
+        self.log.info ("Print output of command is {0}".format(output))
+        self.assertEqual(output['balanced'],True," The Web request has failed on port 18091 ")
+        
+        cmd = "curl -v -u Administrator:password " + \
+              " http://{0}:{1}/pools/default". \
+                  format(self.master.ip, '8091')
+
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        self.assertTrue(output.find("200 OK"),"Cannot execute command on port 8091")
+            
+        
+        if self.client_cert_state == 'enable':
+            cmd = "curl -v -X POST --cacert " + self.root_ca_path + " --cert-type PEM --cert " + self.client_cert_pem + " --key-type PEM --key " + self.client_cert_key + \
+                  " https://{0}:{1}/pools/default -d 'memoryQuota=400'". \
+                      format(host.ip, '18091')
+        else:
+            cmd = "curl -v -X POST --cacert " + self.root_ca_path +  \
+                  " -u Administrator:password " + \
+                  " https://{0}:{1}/pools/default -d 'memoryQuota=400'". \
+                      format(host.ip, '18091')
+        
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output == "":
+            self.assertTrue(True,"Issue with post on /pools/default")
+        
+        cmd = "curl -v -X POST " + \
+                  " -u Administrator:password " + \
+                  " http://{0}:{1}/pools/default -d 'memoryQuota=400'". \
+                      format(host.ip, '8091')
+        
+        self.log.info ("Final command is {0}".format(cmd))
+        output = subprocess.check_output(cmd, shell=True)
+        if output == "":
+            self.assertTrue(True,"Issue with post on /pools/default")
+        
 
     def _sdk_connection(self,root_ca_path=x509main.CACERTFILEPATH + x509main.CACERTFILE,bucket='default',host_ip=None):
         self.sleep(30)
@@ -681,7 +1274,7 @@ class x509_upgrade(NewUpgradeBaseTest):
         connection_string = 'couchbases://'+ host_ip + '/' + bucket + '?certpath='+root_ca_path
         self.log.info("Connection string is -{0}".format(connection_string))
         try:
-            cb = Bucket(connection_string, passsword='password')
+            cb = Bucket(connection_string, password='password')
             if cb is not None:
                 result = True
                 return result, cb
@@ -709,6 +1302,7 @@ class x509_upgrade(NewUpgradeBaseTest):
         for server in self.servers:
             result = self._sdk_connection(host_ip=server.ip)
             self.assertTrue(result,"Cannot create a security connection with server")
+            self.check_rest_api(server)
 
 
     def upgrade_half_nodes(self):
