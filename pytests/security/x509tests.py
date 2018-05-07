@@ -1326,3 +1326,22 @@ class x509_upgrade(NewUpgradeBaseTest):
             result = self._sdk_connection(host_ip=server.ip)
             self.assertFalse(result,"Can create a security connection with server")
 
+    def upgrade_all_nodes_4_6_3(self):
+        servers_in = self.servers[1:]
+        self._install(self.servers)
+        rest_conn = RestConnection(self.master)
+        rest_conn.init_cluster(username='Administrator', password='password')
+        rest_conn.create_bucket(bucket='default', ramQuotaMB=512)
+        self.cluster.rebalance(self.servers, servers_in, [])
+        
+        x509main(self.master).setup_master()
+        x509main().setup_cluster_nodes_ssl(self.servers,reload_cert=True)
+
+        upgrade_threads = self._async_update(upgrade_version=self.upgrade_version, servers=self.servers)
+        for threads in upgrade_threads:
+            threads.join()
+        
+        for server in self.servers:
+            result = self._sdk_connection(host_ip=server.ip)
+            self.assertTrue(result,"Cannot create a security connection with server")
+            self.check_rest_api(server)

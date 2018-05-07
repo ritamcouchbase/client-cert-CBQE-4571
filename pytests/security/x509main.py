@@ -116,6 +116,14 @@ class x509main:
                 else:
                     fin.write("\nIP.0 = {0}".format(server.ip.replace('[', '').replace(']', '')))
                 fin.close()
+                    
+                import fileinput
+                import sys
+                for line in fileinput.input("./pytests/security/clientconf3.conf", inplace=1):
+                    if "ip_address" in line:
+                        line = line.replace("ip_address",server.ip)
+                    sys.stdout.write(line)
+                        
     
                 # print file contents for easy debugging
                 fout = open("./pytests/security/clientconf3.conf", "r")
@@ -128,10 +136,10 @@ class x509main:
                 #output, error= shell.execute_command("openssl req -new -key " + x509main.CACERTFILEPATH + server.ip + ".key -out " + x509main.CACERTFILEPATH + server.ip + ".csr -subj '/C=UA/O=My Company/CN=" + server.ip + "'")
                 output, error= shell.execute_command("openssl req -new -key " + x509main.CACERTFILEPATH + server.ip + ".key -out " + x509main.CACERTFILEPATH + server.ip + ".csr -config ./pytests/security/clientconf3.conf")
                 log.info ('Output message is {0} and error message is {1}'.format(output,error))
-                output, error = shell.execute_command("openssl x509 -req -in "+ x509main.CACERTFILEPATH + server.ip + ".csr -CA " + x509main.CACERTFILEPATH + "int.pem -CAkey " + \
-                                x509main.CACERTFILEPATH + "int.key -CAcreateserial -CAserial " + x509main.CACERTFILEPATH + "intermediateCA.srl -out " + x509main.CACERTFILEPATH + server.ip + ".pem -days 365 -sha256")
                 #output, error = shell.execute_command("openssl x509 -req -in "+ x509main.CACERTFILEPATH + server.ip + ".csr -CA " + x509main.CACERTFILEPATH + "int.pem -CAkey " + \
-                #                x509main.CACERTFILEPATH + "int.key -CAcreateserial -CAserial " + x509main.CACERTFILEPATH + "intermediateCA.srl -out " + x509main.CACERTFILEPATH + server.ip + ".pem -days 365 -sha256 -extfile ./pytests/security/clientconf3.conf -extensions req_ext")
+                #                x509main.CACERTFILEPATH + "int.key -CAcreateserial -CAserial " + x509main.CACERTFILEPATH + "intermediateCA.srl -out " + x509main.CACERTFILEPATH + server.ip + ".pem -days 365 -sha256")
+                output, error = shell.execute_command("openssl x509 -req -in "+ x509main.CACERTFILEPATH + server.ip + ".csr -CA " + x509main.CACERTFILEPATH + "int.pem -CAkey " + \
+                                x509main.CACERTFILEPATH + "int.key -CAcreateserial -CAserial " + x509main.CACERTFILEPATH + "intermediateCA.srl -out " + x509main.CACERTFILEPATH + server.ip + ".pem -days 365 -sha256 -extfile ./pytests/security/clientconf3.conf -extensions req_ext")
                                 
                 log.info ('Output message is {0} and error message is {1}'.format(output,error))
                 #output, error = shell.execute_command("openssl x509 -req -days 300 -in " + x509main.CACERTFILEPATH  + server.ip + ".csr -CA " + x509main.CACERTFILEPATH + "int.pem -CAkey " + \
