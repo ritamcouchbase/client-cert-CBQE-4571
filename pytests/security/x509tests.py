@@ -1046,7 +1046,10 @@ class x509tests(BaseTestCase):
                       format(self.master.ip, '18092')
         self.log.info ("Final command is {0}".format(cmd))
         output = subprocess.check_output(cmd, shell=True)
-        self.assertEqual(json.loads(output)['reason'],"Content is not json.","Create Index Failed")
+        if self.client_cert_state == 'enable':
+            self.assertEqual(json.loads(output)['reason'],"Content is not json.","Create Index Failed")
+        else:
+            self.assertEqual(json.loads(output)['error'],"not_found","Create Index Failed")
         
         #" https://{0}:{1}/default/_design/dev_sample -d '{\"views\":{\"sampleview\":{\"map\":\"function (doc, meta){emit(doc.emailId,meta.id, null);\n}\"}}, \"options\": {\"updateMinChanges\": 3, \"replicaUpdateMinChanges\": 3}}'". \
         
@@ -1062,6 +1065,7 @@ class x509tests(BaseTestCase):
                       format(self.master.ip, '18092')
         self.log.info ("Final command is {0}".format(cmd))
         output = subprocess.check_output(cmd, shell=True)
+        print json.loads(output)
         self.assertEqual(json.loads(output)['error'],"not_found","Create Index Failed")
                
     def test_rest_api_disable(self):
@@ -1229,7 +1233,7 @@ class x509_upgrade(NewUpgradeBaseTest):
         output = subprocess.check_output(cmd, shell=True)
         output =  json.loads(output)
         self.log.info ("Print output of command is {0}".format(output))
-        self.assertEqual(output['balanced'],True," The Web request has failed on port 18091 ")
+        self.assertEqual(output['rebalanceStatus'],'none'," The Web request has failed on port 18091 ")
         
         cmd = "curl -v -u Administrator:password " + \
               " http://{0}:{1}/pools/default". \
