@@ -839,7 +839,7 @@ class x509tests(BaseTestCase):
         output = subprocess.check_output(cmd, shell=True)
         output =  json.loads(output)
         self.log.info ("Print output of command is {0}".format(output))
-        self.assertEqual(output['balanced'],True," The Web request has failed on port 18091 ")
+        self.assertEqual(output['rebalanceStatus'],'none'," The Web request has failed on port 18091 ")
         
         cmd = "curl -v -u Administrator:password " + \
               " http://{0}:{1}/pools/default". \
