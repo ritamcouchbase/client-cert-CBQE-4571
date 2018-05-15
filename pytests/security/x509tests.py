@@ -436,6 +436,8 @@ class x509tests(BaseTestCase):
             self.log.info("Exception is -{0}".format(ex))
         finally:
             restCluster2.delete_bucket()
+            restCluster1.remove_all_replications()
+            restCluster1.remove_all_remote_clusters()
 
     #simple xdcr with ca cert updated at source and destination, re-generate new certs
     def test_basic_xdcr_with_cert_regenerate(self):
@@ -450,6 +452,8 @@ class x509tests(BaseTestCase):
             #Setup cluster1
             x509main(cluster1[0]).setup_master()
             x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
+            restCluster1.remove_all_replications()
+            restCluster1.remove_all_remote_clusters()
 
             '''
             restCluster1.add_node('Administrator','password',cluster1[1].ip)
