@@ -414,7 +414,6 @@ class x509tests(BaseTestCase):
                     cluster2[1].ip = '[' + cluster2[1].ip + ']'
                     cluster2[0].ip = '[' + cluster2[0].ip + ']'
         
-            self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
             restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
             
             '''
@@ -480,6 +479,7 @@ class x509tests(BaseTestCase):
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data  =  open(test, 'rb').read()
             restCluster1.add_remote_cluster(cluster2[0].ip,cluster2[0].port,'Administrator','password',remote_cluster_name,certificate=data)
+            self.sleep(20)
             replication_id = restCluster1.start_replication('continuous','default',remote_cluster_name)
 
             #restCluster1.set_xdcr_param('default','default','pauseRequested',True)
