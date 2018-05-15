@@ -540,6 +540,7 @@ class x509tests(BaseTestCase):
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data  =  open(test, 'rb').read()
             restCluster1.add_remote_cluster(cluster2[0].ip,cluster2[0].port,'Administrator','password',remote_cluster_name,certificate=data)
+            self.sleep(20)
             replication_id = restCluster1.start_replication('continuous','default',remote_cluster_name)
             if replication_id is not None:
                 self.assertTrue(True,"Cannot create a replication")
