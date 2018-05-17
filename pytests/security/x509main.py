@@ -156,6 +156,7 @@ class x509main:
             
             os.remove("./pytests/security/clientconf3.conf")
             #Check if client_ip is ipv6, remove []
+            print type(client_ip)
             if "[" in client_ip:
                 client_ip = client_ip.replace("[", "").replace("]", "")
             

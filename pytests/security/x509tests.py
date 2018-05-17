@@ -468,6 +468,7 @@ class x509tests(BaseTestCase):
             #Setup cluster2
             x509main(cluster2[0]).setup_master()
             x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
+            restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
             
             '''
             restCluster2.add_node('Administrator','password',cluster2[1].ip)
