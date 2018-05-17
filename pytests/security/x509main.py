@@ -67,7 +67,7 @@ class x509main:
         for server in copy_servers:
             x509main(server)._setup_node_certificates(reload_cert=reload_cert,host=server)
 
-    def _generate_cert(self,servers,root_cn='Root\ Authority',type='go',encryption="",key_length=1024,client_ip=0,alt_names='default',dns=None,uri=None):
+    def _generate_cert(self,servers,root_cn='Root\ Authority',type='go',encryption="",key_length=1024,client_ip=None,alt_names='default',dns=None,uri=None):
         shell = RemoteMachineShellConnection(self.slave_host)
         shell.execute_command("rm -rf " + x509main.CACERTFILEPATH)
         shell.execute_command("mkdir " + x509main.CACERTFILEPATH)
@@ -156,7 +156,7 @@ class x509main:
             
             os.remove("./pytests/security/clientconf3.conf")
             #Check if client_ip is ipv6, remove []
-            print type(client_ip)
+            
             if "[" in client_ip:
                 client_ip = client_ip.replace("[", "").replace("]", "")
             
