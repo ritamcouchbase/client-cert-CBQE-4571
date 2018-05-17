@@ -453,6 +453,7 @@ class x509tests(BaseTestCase):
             x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
             restCluster1.remove_all_replications()
             restCluster1.remove_all_remote_clusters()
+            restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
 
             '''
             restCluster1.add_node('Administrator','password',cluster1[1].ip)
@@ -672,7 +673,7 @@ class x509tests(BaseTestCase):
     #Changing from root to self signed certificates
     def test_sdk_change_ca_self_signed(self):
         rest = RestConnection(self.master)
-        temp_file_name = '/tmp/newcerts/orig_cert.pem'
+        temp_file_name = x509main.CACERTFILEPATH + '/orig_cert.pem'
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(self.servers)
         rest.create_bucket(bucket='default', ramQuotaMB=100)
@@ -701,7 +702,7 @@ class x509tests(BaseTestCase):
         create_docs.start()
 
         x509main(self.master)._delete_inbox_folder()
-        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority")
+        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority",type='openssl')
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(self.servers,reload_cert=True)
 
@@ -729,7 +730,7 @@ class x509tests(BaseTestCase):
         create_docs.start()
 
         x509main(self.master)._delete_inbox_folder()
-        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority")
+        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority",type='openssl')
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(self.servers,reload_cert=True)
 
