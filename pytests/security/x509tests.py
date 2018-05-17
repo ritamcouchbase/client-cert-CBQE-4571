@@ -703,7 +703,7 @@ class x509tests(BaseTestCase):
         create_docs.start()
 
         x509main(self.master)._delete_inbox_folder()
-        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority",type='openssl')
+        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority",type='openssl',client_ip=self.ip_address)
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(self.servers,reload_cert=True)
 
@@ -731,7 +731,7 @@ class x509tests(BaseTestCase):
         create_docs.start()
 
         x509main(self.master)._delete_inbox_folder()
-        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority",type='openssl')
+        x509main(self.master)._generate_cert(self.servers,root_cn="CB\ Authority",type='openssl',client_ip=self.ip_address)
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(self.servers,reload_cert=True)
 
