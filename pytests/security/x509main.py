@@ -62,11 +62,6 @@ class x509main:
         return ipAddress
         '''
 
-    def setup_cluster_nodes_ssl(self,servers=[],reload_cert=False):
-        copy_servers = copy.deepcopy(servers)
-        for server in copy_servers:
-            x509main(server)._setup_node_certificates(reload_cert=reload_cert,host=server)
-
     def _generate_cert(self,servers,root_cn='Root\ Authority',type='go',encryption="",key_length=1024,client_ip=None,alt_names='default',dns=None,uri=None):
         shell = RemoteMachineShellConnection(self.slave_host)
         shell.execute_command("rm -rf " + x509main.CACERTFILEPATH)
@@ -196,52 +191,15 @@ class x509main:
             log.info ('Output message is {0} and error message is {1}'.format(output,error))
             os.remove("./pytests/security/clientconf2.conf")
 
-
-    def _reload_node_certificate(self,host):
-        rest = RestConnection(host)
-        api = rest.baseUrl + "node/controller/reloadCertificate"
-        http = httplib2.Http()
-        status, content = http.request(api, 'POST', headers=self._create_rest_headers('Administrator','password'))
-        #status, content, header = rest._http_request(api, 'POST')
-        return status, content
-
-    def _get_install_path(self,host):
-        shell = RemoteMachineShellConnection(host)
-        os_type = shell.extract_remote_info().distribution_type
-        log.info ("OS type is {0}".format(os_type))
-        if os_type == 'windows':
-            install_path = x509main.WININSTALLPATH
-        elif os_type == 'Mac':
-            install_path = x509main.MACINSTALLPATH
-        else:
-            install_path = x509main.LININSTALLPATH
-
-        return install_path
-
-    def _create_inbox_folder(self,host):
-        shell = RemoteMachineShellConnection(self.host)
-        final_path = self.install_path + x509main.CHAINFILEPATH
-        shell.create_directory(final_path)
-
-    def _delete_inbox_folder(self):
-        shell = RemoteMachineShellConnection(self.host)
-        final_path = self.install_path + x509main.CHAINFILEPATH
-        shell = RemoteMachineShellConnection(self.host)
-        os_type = shell.extract_remote_info().distribution_type
-        log.info ("OS type is {0}".format(os_type))
-        shell.delete_file(final_path , "root.crt")
-        shell.delete_file(final_path , "chain.pem")
-        shell.delete_file(final_path , "pkey.key")
-        if os_type == 'windows':
-            final_path = '/cygdrive/c/Program\ Files/Couchbase/Server/var/lib/couchbase/inbox'
-            shell.execute_command('rm -rf ' + final_path)
-        else:
-            shell.execute_command('rm -rf ' + final_path)
-
-    def _copy_node_key_chain_cert(self,host,src_path,dest_path):
-        shell = RemoteMachineShellConnection(host)
-        shell.copy_file_local_to_remote(src_path,dest_path)
-
+    #Top level method for setup of nodes in the cluster
+    def setup_cluster_nodes_ssl(self,servers=[],reload_cert=False):
+        #Make a copy of the servers not to change self.servers
+        copy_servers = copy.deepcopy(servers)
+        #For each server in cluster, setup a node certificates, create inbox folders and copy + chain cert
+        for server in copy_servers:
+            x509main(server)._setup_node_certificates(reload_cert=reload_cert,host=server)
+    
+    #Create inbox folder and copy node cert and chain cert
     def _setup_node_certificates(self,chain_cert=True,node_key=True,reload_cert=True,host=None):
         if host == None:
             host = self.host
@@ -260,40 +218,90 @@ class x509main:
         if reload_cert:
             status, content = self._reload_node_certificate(host)
             return status, content
+    
+    #Reload cert for self signed certificate
+    def _reload_node_certificate(self,host):
+        rest = RestConnection(host)
+        api = rest.baseUrl + "node/controller/reloadCertificate"
+        http = httplib2.Http()
+        status, content = http.request(api, 'POST', headers=self._create_rest_headers('Administrator','password'))
+        #status, content, header = rest._http_request(api, 'POST')
+        return status, content
 
+    #Get the install path for different operating system
+    def _get_install_path(self,host):
+        shell = RemoteMachineShellConnection(host)
+        os_type = shell.extract_remote_info().distribution_type
+        log.info ("OS type is {0}".format(os_type))
+        if os_type == 'windows':
+            install_path = x509main.WININSTALLPATH
+        elif os_type == 'Mac':
+            install_path = x509main.MACINSTALLPATH
+        else:
+            install_path = x509main.LININSTALLPATH
+        return install_path
+
+    #create inbox folder for host
+    def _create_inbox_folder(self,host):
+        shell = RemoteMachineShellConnection(self.host)
+        final_path = self.install_path + x509main.CHAINFILEPATH
+        shell.create_directory(final_path)
+
+    #delete all file inbox folder and remove inbox folder
+    def _delete_inbox_folder(self):
+        shell = RemoteMachineShellConnection(self.host)
+        final_path = self.install_path + x509main.CHAINFILEPATH
+        shell = RemoteMachineShellConnection(self.host)
+        os_type = shell.extract_remote_info().distribution_type
+        log.info ("OS type is {0}".format(os_type))
+        shell.delete_file(final_path , "root.crt")
+        shell.delete_file(final_path , "chain.pem")
+        shell.delete_file(final_path , "pkey.key")
+        if os_type == 'windows':
+            final_path = '/cygdrive/c/Program\ Files/Couchbase/Server/var/lib/couchbase/inbox'
+            shell.execute_command('rm -rf ' + final_path)
+        else:
+            shell.execute_command('rm -rf ' + final_path)
+
+    #Function to simply copy from source to destination
+    def _copy_node_key_chain_cert(self,host,src_path,dest_path):
+        shell = RemoteMachineShellConnection(host)
+        shell.copy_file_local_to_remote(src_path,dest_path)
 
     def _create_rest_headers(self,username="Administrator",password="password"):
         authorization = base64.encodestring('%s:%s' % (username,password))
         return {'Content-Type': 'application/octet-stream',
             'Authorization': 'Basic %s' % authorization,
             'Accept': '*/*'}
-
-
+    
+    #Function that will upload file via rest
     def _rest_upload_file(self,URL,file_path_name,username=None,password=None):
         data  =  open(file_path_name, 'rb').read()
         http = httplib2.Http()
         status, content = http.request(URL, 'POST', headers=self._create_rest_headers(username,password),body=data)
-        print status
-        print content
+        log.info (" Status from rest file upload command is {0}".format(status))
+        log.info (" Content from rest file upload command is {0}".format(content))
         return status, content
 
-
+    #Upload Cluster or root cert
     def _upload_cluster_ca_certificate(self,username,password):
         rest = RestConnection(self.host)
         url = "controller/uploadClusterCA"
         api = rest.baseUrl + url
         self._rest_upload_file(api,x509main.CACERTFILEPATH + "/" + x509main.CACERTFILE,"Administrator",'password')
     
+    #Upload security setting for client cert
     def _upload_cluster_ca_settings(self,username,password):
         temp = self.host
         rest = RestConnection(temp)
         url = "settings/clientCertAuth"
         api = rest.baseUrl + url
         status, content = self._rest_upload_file(api,x509main.CACERTFILEPATH + x509main.CLIENT_CERT_AUTH_JSON,"Administrator",'password')
-        print status
-        print content
+        log.info (" Status from upload of client cert settings is {0}".format(status))
+        log.info (" Content from upload of client cert settings is {0}".format(content))
         return status, content
 
+    #Validate ssl login by sending cert to 18091 for initial ssl handshake
     def _validate_ssl_login(self,host=None,port=18091,username='Administrator',password='password'):
         key_file = x509main.CACERTFILEPATH + "/" + x509main.CAKEYFILE
         cert_file = x509main.CACERTFILEPATH + "/" + x509main.CACERTFILE
@@ -315,6 +323,7 @@ class x509main:
             log.info (" Exception is {0}".format(ex))
             return 'error'
 
+    #Get current root cert from the cluster
     def _get_cluster_ca_cert(self):
         rest = RestConnection(self.host)
         api = rest.baseUrl + "pools/default/certificate?extended=true"

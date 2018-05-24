@@ -73,9 +73,9 @@ class x509tests(BaseTestCase):
 
     def tearDown(self):
         print "Into Teardown"
-        self._reset_original()
-        shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
-        shell.execute_command("rm " + x509main.CACERTFILEPATH)
+        #self._reset_original()
+        #shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
+        #shell.execute_command("rm " + x509main.CACERTFILEPATH)
         super(x509tests, self).tearDown()
 
 
@@ -245,12 +245,6 @@ class x509tests(BaseTestCase):
         rest = RestConnection(self.master)
         x509main(self.master).setup_master()
         x509main().setup_cluster_nodes_ssl(servs_inout)
-        '''
-        for server in self.servers:
-            if server.ip.count(':') > 0:
-                    # raw ipv6? enclose in square brackets
-                    server.ip = '[' + server.ip + ']'
-        '''
         known_nodes = ['ns_1@'+self.master.ip]
         for server in servs_inout:
             rest.add_node('Administrator','password',server.ip)
@@ -386,43 +380,17 @@ class x509tests(BaseTestCase):
             #Setup cluster1
             x509main(cluster1[0]).setup_master()
             x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
-            #reset the severs to ipv6 if there were ipv6
-            if cluster1[1].ip.count(':') > 0:
-                    # raw ipv6? enclose in square brackets
-                    cluster1[1].ip = '[' + cluster1[1].ip + ']'
-                    cluster1[0].ip = '[' + cluster1[0].ip + ']'
             
             restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
             restCluster1.remove_all_replications()
             restCluster1.remove_all_remote_clusters()
             
-            '''
-            restCluster1.add_node('Administrator','password',cluster1[1].ip)
-            known_nodes = ['ns_1@'+cluster1[0].ip,'ns_1@' + cluster1[1].ip]
-            restCluster1.rebalance(known_nodes)
-            self.assertTrue(self.check_rebalance_complete(restCluster1),"Issue with rebalance")
-            restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
-            restCluster1.remove_all_replications()
-            restCluster1.remove_all_remote_clusters()
-            '''
-
+            
             #Setup cluster2
             x509main(cluster2[0]).setup_master()
             x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
-            if cluster2[1].ip.count(':') > 0:
-                    # raw ipv6? enclose in square brackets
-                    cluster2[1].ip = '[' + cluster2[1].ip + ']'
-                    cluster2[0].ip = '[' + cluster2[0].ip + ']'
-        
             restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
             
-            '''
-            restCluster2.add_node('Administrator','password',cluster2[1].ip)
-            known_nodes = ['ns_1@'+cluster2[0].ip,'ns_1@' + cluster2[1].ip]
-            restCluster2.rebalance(known_nodes)
-            self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
-            restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
-            '''
             self.sleep(20)
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data  =  open(test, 'rb').read()
@@ -455,29 +423,12 @@ class x509tests(BaseTestCase):
             restCluster1.remove_all_remote_clusters()
             restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
 
-            '''
-            restCluster1.add_node('Administrator','password',cluster1[1].ip)
-            known_nodes = ['ns_1@'+cluster1[0].ip,'ns_1@' + cluster1[1].ip]
-            restCluster1.rebalance(known_nodes)
-            self.assertTrue(self.check_rebalance_complete(restCluster1),"Issue with rebalance")
-            restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
-            restCluster1.remove_all_replications()
-            restCluster1.remove_all_remote_clusters()
-            '''
-
+            
             #Setup cluster2
             x509main(cluster2[0]).setup_master()
             x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
             restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
             
-            '''
-            restCluster2.add_node('Administrator','password',cluster2[1].ip)
-            known_nodes = ['ns_1@'+cluster2[0].ip,'ns_1@' + cluster2[1].ip]
-            restCluster2.rebalance(known_nodes)
-            self.assertTrue(self.check_rebalance_complete(restCluster2),"Issue with rebalance")
-            restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
-            '''
-
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data  =  open(test, 'rb').read()
             restCluster1.add_remote_cluster(cluster2[0].ip,cluster2[0].port,'Administrator','password',remote_cluster_name,certificate=data)
@@ -567,10 +518,6 @@ class x509tests(BaseTestCase):
             x509main(cluster1[0]).setup_master()
             x509main(cluster1[1])._setup_node_certificates(reload_cert=False)
 
-            # restCluster1.add_node(user, password, cluster1[1].ip)
-            # known_nodes = ['ns_1@' + cluster1[0].ip, 'ns_1@' + cluster1[1].ip]
-            # restCluster1.rebalance(known_nodes)
-            # self.assertTrue(self.check_rebalance_complete(restCluster1), "Issue with rebalance")
             restCluster1.create_bucket(bucket='default', ramQuotaMB=100)
             restCluster1.remove_all_replications()
             restCluster1.remove_all_remote_clusters()
@@ -579,15 +526,11 @@ class x509tests(BaseTestCase):
             x509main(cluster2[0]).setup_master()
             x509main(cluster2[1])._setup_node_certificates(reload_cert=False)
 
-            # restCluster2.add_node(user, password, cluster2[1].ip)
-            # known_nodes = ['ns_1@' + cluster2[0].ip, 'ns_1@' + cluster2[1].ip]
-            # restCluster2.rebalance(known_nodes)
-            # self.assertTrue(self.check_rebalance_complete(restCluster2), "Issue with rebalance")
             restCluster2.create_bucket(bucket='default', ramQuotaMB=100)
 
             test = x509main.CACERTFILEPATH + x509main.CACERTFILE
             data = open(test, 'rb').read()
-
+            
             # " -u {0}:{1}".format(user, password) + \
             cmd = "curl -k -v -X POST" \
                   " --cacert " + self.root_ca_path + \
@@ -605,15 +548,15 @@ class x509tests(BaseTestCase):
             shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
             output = shell.execute_command(cmd)
             print output
-            self.sleep(0)
-
+            self.sleep(10)
+            '''
+            data  =  open(test, 'rb').read()
+            restCluster1.add_remote_cluster(cluster2[0].ip,cluster2[0].port,'Administrator','password',remote_cluster_name,certificate=data)
+            '''
             replication_id = restCluster1.start_replication('continuous', 'default', remote_cluster_name)
             if replication_id is not None:
                 self.assertTrue(True, "Replication was not created successfully")
         finally:
-            known_nodes = ['ns_1@' + cluster2[0].ip, 'ns_1@' + cluster2[1].ip]
-            restCluster2.rebalance(known_nodes, ['ns_1@' + cluster2[1].ip])
-            self.assertTrue(self.check_rebalance_complete(restCluster2), "Issue with rebalance")
             restCluster2.delete_bucket()
 
     def test_basic_ssl_test_invalid_cert(self):
