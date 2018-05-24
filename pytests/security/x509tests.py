@@ -532,17 +532,17 @@ class x509tests(BaseTestCase):
             data = open(test, 'rb').read()
             
             # " -u {0}:{1}".format(user, password) + \
-            cmd = "curl -k -v -X POST" \
+            cmd = "curl -k -v -X POST -u Administrator:password" \
                   " --cacert " + self.root_ca_path + \
                   " --cert-type PEM --cert " + self.client_cert_pem + \
                   " --key-type PEM --key " + self.client_cert_key + \
-                  " -d name=C2" \
+                  " -d name=" + remote_cluster_name + \
                   " -d hostname=" + cluster2[0].ip +":8091"\
                   " -d username=" + user +\
                   " -d password=" + password +\
                   " -d demandEncryption=1" \
                   " --data-urlencode \"certificate={0}\"".format(data) + \
-                  " https://Administrator:password@{0}:18091/pools/default/remoteClusters"\
+                  " http://Administrator:password@{0}:8091/pools/default/remoteClusters"\
                       .format(self.master.ip)
             print cmd
             shell = RemoteMachineShellConnection(x509main.SLAVE_HOST)
